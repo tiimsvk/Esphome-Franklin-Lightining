@@ -1,6 +1,6 @@
 # AS3935 lightning sensor - Lightning detection storm distance
 Home Assistant and ESPHOME
-
+![Main photo of the weather station](title.jpg)
 **FEATURES:**
 - Connection to the home assistant using esphome
 - Lightning detection, their distance and strength
@@ -83,9 +83,8 @@ utility_meter:
 everything needed in the file "weather-lightining.yaml"
 
 **MAKE**
-
+![make2](sensor.jpg)
 
 **RESOLUTS**
-
-
+![Record](record.jpg)
 
