@@ -62,7 +62,7 @@ Charging Battery Solar panel
 - protect battery BMS 1s
 - Solar panel + DC009 socket and protect diode shottky 1N5817 low drop 0.3V
   
-HOME ASSISTANT CONFIGURATION
+**HOME ASSISTANT CONFIGURATION**
 - add custom integration [meteoalarm](https://www.home-assistant.io/integrations/meteoalarm/)
 - add custom integration [openweathermap](https://www.home-assistant.io/integrations/openweathermap/)
   
@@ -76,3 +76,14 @@ utility_meter:
     source: sensor.weather_lightining_lightning_counter
     cycle: monthly
 ```
+
+**CODE**
+everything needed in the file "weather-lightining.yaml"
+
+**MAKE**
+
+
+**RESOLUTS**
+
+
+
