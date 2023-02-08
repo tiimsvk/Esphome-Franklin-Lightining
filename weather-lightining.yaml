@@ -1,0 +1,551 @@
+#-------------------------------------------
+# BUG AND REPAIR AND PLANNED
+#-------------------------------------------
+# Kontrola funkčnosti počas bleskov 
+# planned add:  condition: api.connected: fixed when no connect and sleep
+# wifi connetcted wait util skontrolovat funkcnost
+# MQ2 porovnat s podkladom od senzoru mq135
+
+#-------------------------------------------
+# SUBTITUTIONS - basic definitions and description of the device
+#-------------------------------------------
+substitutions:
+  friendly_name: Weather-lightining
+  device_name: ESP-Lightining
+  device_description: "Lightining sensor CJMCU AMS AS3935 (https://www.homeassistant-cz.cz/viewtopic.php?f=56&t=379&p=3711#p3711), Deep Sleep whit wakeup pin"
+  created_by: "StudioTiiM 2022-2023"
+  
+#-------------------------------------------
+# DEFINE PINS AND VARIABILES
+# CIRCUIT AND MODULES - basic definitions and description of the device
+#-------------------------------------------
+ # ----- MCU -----
+  # Module: ESP32-S + adapter
+  
+ # ----- LEDS -----
+   # Modul: Status led
+   # Specification: 1x yellow led
+   # Circuit: 22Ω resistor to GND
+   # Power consumption: 15mA
+  status_led_pin: GPIO21
+
+ # ----- LIGHTINING SENSOR -----
+  # Module: CJMCU AMS AS3935
+   # Specifications: Voltage: 2.4 ~ 5.5V / Operational Range: Temperature: -40 ~ +85°C Humidity: 5 ~ 85% (Note: Sensor to place waterproof box) / Accuracy: Storm activity 1 ~ 40 km (actual measurement max 30 km); detected cloud - ground; cloud - cloud
+   # Circuit: Interface: SPI (I2C without success); disable voltage regulator
+
+    # Top view 
+    # ------------------------------------------------------------------------------------------
+    # PINS: VCC | GND |   SCL   |   MOSI   |   MISO   |   CS   |  SI |   IRQ   | EN_V | A0 | A1
+    # NAME: 3v3 | GND | SPI_CLK | SPI_MOSI | SPI_MISO | AMS_CS | GND | AMS_IRQ |  NC  | NC | NC 
+    # ------------------------------------------------------------------------------------------
+    
+   # Position: Position horizontally (not vertically)
+   # Power consumption: standby 15μA normal: 80μA measure: 350μA
+  ams_cs: GPIO26
+  ams_irq: GPIO27
+  
+ # ----- CHARGING -----
+  # Module: Solar panel usb
+   # Specification: 5V 5W
+   # Type: Monocrystalline 
+   # Solar panel dimension
+   # Circuit: protect diode shottky 1N5817 low drop 0.3V
+  width_panel: "0.07" # m
+  height_panel: "0.14" # m
+  
+  # Module: TP4056 Lithium Battery Charger Module USB micro whit balancer protect
+   # Modification: Rprog 1.8kΩ
+   # Chip: CL4056H
+   # Specification: Vin 4.5 ~ 8 VDC / Out 4.2 VDC / Current (5VDC) standby: 0.366mA charging: 0.667A discharging: max 2A / Led indicator charging red; full charging green
+   # Power consumption: standby 0.366mA / charging 0.667mA / discharging max. 1A
+   
+ # ----- BATTERY -----
+  # OLD: Battery: JT955565 3.7V 5000mAh 18.5Wh 202000520
+  # Protection:
+    # Chip: DW01K + 8205A
+    # Specification: overcharge 4.25V / discharge 2.5V / current 1A / overcurrent 2.5 A
+    # Power consumption: standby 3.6uA
+
+  # Battery: LGA3264A1 old HTC mobile battery Li-ion 3.83V 2840mAh
+   # Protection: original on battery bms max in 4.4V
+   # Type battery: B0PGE100 1Icp4/64/93 10.87Whr
+
+   # Circuit 1: ADC battery measure switch: connect on MCU 220Ω to Base NPN3904 and BatVCC 220Ω to base PNP3906 transistor
+  battery_adc_switch: GPIO32
+   # Circuit 2: ADC battery measure voltage: Divider 4.2V to gpio 680k(GND) and 330k(BAT+) 2.82V
+  battery_adc: GPIO33
+
+ # ---------------------------------------------
+ # HOME ASSISTANTN IMPORTET SENSORS
+ # ---------------------------------------------
+  # METEOALARM
+  meteoalarm_event: binary_sensor.meteoalarm
+  weathermap_code: sensor.openweathermap_weather_code
+
+#-------------------------------------------
+# PROTOCOLS
+#-------------------------------------------
+ # ----- PROTOCOLS PINS -----
+  # spi
+  spi_miso: GPIO12
+  spi_mosi: GPIO13
+  spi_clk: GPIO14
+ # ----- PROTOCOLS SETTINGS -----
+spi:
+  clk_pin: ${spi_clk}
+  mosi_pin: ${spi_mosi}
+  miso_pin: ${spi_miso}
+
+#-------------------------------------------
+# ESP Main settings
+#-------------------------------------------
+esphome:
+  name: weather-lightining
+  project:
+    name: "studiotiim.weather_lightinig"
+    version: 2.1.0
+  platformio_options:
+    board_build.f_cpu: 160000000L # set cpu clock 160mhz
+  on_boot:
+    - priority: 600.0
+      then:
+        - wait_until:
+            condition:
+              wifi.connected:  #  timeout:    HOW TO USE IT?
+            timeout: 30s
+    - priority: -200.0
+      then:
+        - binary_sensor.template.publish: # first send state on template sensor
+            id: deep_sleep_prevent
+            state: OFF
+        - component.update: bat_global # fisrt update battery template after update raw adc battery sensor (else nan value send)
+        - delay: 1s
+        #- binary_sensor.template.publish:
+        #    id: status_online
+        #    state: true
+        - component.update: wifisignal
+        - delay: 5s
+        - switch.turn_on: switch_adc #adc battery status reading when delay 5 second to measure more accurate values
+
+
+  on_shutdown:
+    - priority: -801.0
+      then:
+        - logger.log: 
+            format: "go to offline"
+            level: warn
+
+esp32:
+  board: esp32dev
+
+logger:
+# level: warn
+
+ota:
+  safe_mode: false
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  manual_ip:
+    static_ip: 192.168.31.121
+    gateway: 192.168.31.1
+    subnet: 255.255.255.0
+  fast_connect: True
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "$device_name Hotspot"
+    password: "passlightining"
+
+captive_portal:
+api:
+#mqtt:
+#  broker: '192.168.31.212'
+#  username: !secret mqtt_username
+#  password: !secret mqtt_password
+#  discovery: true
+#  birth_message:
+#    topic: $device_name/status_on
+#    payload: online
+#  will_message:
+#    topic: $device_name/status_off
+#    payload: offline
+
+#  on_connect:
+#    - delay: 500ms
+#    - binary_sensor.template.publish:
+#        id: status_online
+#        state: true
+
+#-------------------------------------------
+# DEEP SLEEP
+#-------------------------------------------
+deep_sleep:
+  run_duration: 60s
+  sleep_duration: 1h # set sleep long time - every time you wake up,
+  #sleep_duration: 20s # test wake up,
+  wakeup_pin : "$ams_irq" # Interrupt (out) PIN
+  wakeup_pin_mode: KEEP_AWAKE # if pin high signal prevent deepsleep 
+  id: deep_sleep_component
+
+#-------------------------------------------
+# SCRIPTS
+#-------------------------------------------
+script:
+#-------------------------------------------
+# Deep sleep script allow
+# prevent deep sleep when raindrop detected
+# if raindrop sensor is wet, it's probably raining, a rain gauge can record the amount of water
+# after raindrop sensor dry go to deep sleep after 120s
+#-------------------------------------------
+  - id: deep_sleep_script 
+    mode: single
+    then:
+      - delay: 30s
+      - logger.log: 
+          format: "BEGIN DEEPSLEEP SCRIPT"
+          level: warn
+      - delay: 10s
+      - deep_sleep.allow: deep_sleep_component
+
+#-------------------------------------------
+# GLOBALS
+#-------------------------------------------
+globals:
+#-------------------------------------------
+# RESTORE VALUE Battery raw adc sensor
+#-------------------------------------------
+  - id: battery_global
+    type: float
+    restore_value: yes
+    initial_value: '0.0'
+
+#-------------------------------------------
+# TIME COMPONENT
+#-------------------------------------------
+time:
+  - platform: sntp
+    id: esptime
+    timezone: "Europe/Bratislava"
+
+#-------------------------------------------
+# STATUS LED
+# Red led resistor 220R
+#-------------------------------------------
+status_led:
+  pin: "$status_led_pin"
+  
+#-------------------------------------------
+# Lightining detector - AMS 3935
+#-------------------------------------------
+as3935_spi:
+  cs_pin: ${ams_cs}
+  irq_pin: ${ams_irq}
+  indoor: false
+  noise_level: 2
+  spike_rejection: 3      # Default 2
+  lightning_threshold: 1
+  mask_disturber: false
+  div_ratio: 0
+  capacitance: 5
+  watchdog_threshold: 2
+
+#-------------------------------------------
+# TEXT SENSORS
+#-------------------------------------------
+text_sensor:
+#-------------------------------------------
+# Meteoalarm import home assistant sensor
+#-------------------------------------------
+  - platform: homeassistant
+    internal: true
+    id: meteoalarm_event
+    entity_id: $meteoalarm_event
+    attribute: event
+    on_value:
+      then:
+        - text_sensor.template.publish:
+            id: meteoalarm
+            state: !lambda "return id(meteoalarm_event).state.c_str();"
+
+  - platform: template
+    id: meteoalarm
+    name: "${friendly_name} Meteoalarm"
+    lambda: |-
+      return {"Loading"};
+    update_interval: never
+
+#-------------------------------------------
+# SENSORS
+#-------------------------------------------
+sensor:
+#-------------------------------------------
+# Openweathermap import home assistant sensor
+#-------------------------------------------
+  - platform: homeassistant
+    internal: true
+    id: weathermap_code
+    entity_id: $weathermap_code
+    on_value:
+      then:
+        - sensor.template.publish:
+            id: weathercode
+            state: !lambda "return id(weathermap_code).state;"
+
+  - platform: template
+    id: weathercode
+    name: "${friendly_name} WeatherCode"
+    update_interval: never
+    accuracy_decimals: 0
+   
+#-------------------------------------------
+# Wifi signal component
+#------------------------------------------- 
+  - platform: wifi_signal
+    name: "${friendly_name} Signal"
+    id: wifisignal
+    update_interval: never
+
+#-------------------------------------------
+# Raw Battery sensor
+#-------------------------------------------
+  - platform: adc
+    pin: "$battery_adc"
+    #name: "${friendly_name} Battery Raw"
+    update_interval: never
+    attenuation: 11db
+    id: batlevel
+    internal: True
+
+#-------------------------------------------
+# Battery sensor
+# ADC units whit units %
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Battery"
+    update_interval: never
+    id: bat_global
+    unit_of_measurement: "%"
+    lambda: "return id(battery_global);"
+    filters:
+      - calibrate_linear:
+          - 1.9 -> 0    # 3.00V
+          - 2.43 -> 100 # 4.14V (full battery 4.19V)
+      - lambda: 'return max((float)0.0, x);' # No value lower than 0
+      - lambda: 'return min((float)100.0, x);' # No value greater than 100
+      - filter_out: nan
+    device_class: battery
+    entity_category: diagnostic
+    icon: mdi:battery
+    accuracy_decimals: 0
+
+#-------------------------------------------
+# AMS AS3935 Franklin Lightning Sensor
+# SPI configuration whitout voltage regulator enabled
+#-------------------------------------------
+  - platform: as3935
+    lightning_energy:
+      name: "${friendly_name} Lightning Energy Raw"
+      internal: true
+      unit_of_measurement: "lightining"
+      icon: mdi:lightning-bolt-outline
+      accuracy_decimals: 0
+      on_value:
+        if:
+          condition:
+            sensor.in_range:
+              id: energy
+              above: 1
+          then:
+            - number.increment: light_counter
+      id: energy
+    distance:
+      name: "${friendly_name} Distance Storm Raw"
+      internal: true
+      icon: mdi:access-point
+      accuracy_decimals: 0
+      id: distance
+      
+# Templated filter out isnan value
+  - platform: template
+    name: "${friendly_name} Lightning Energy"
+    lambda: return id(energy).state;
+    filters:
+      lambda: if (isnan(x)) {  return 0.0; } return x;
+    unit_of_measurement: "lightining"
+    accuracy_decimals: 0
+    icon: mdi:lightning-bolt-outline
+
+  - platform: template
+    name: "${friendly_name} Distance Storm"
+    lambda: return id(distance).state;
+    filters:
+      lambda: if (isnan(x)) {  return 0.0; } return x;
+    unit_of_measurement: "km"
+    accuracy_decimals: 0
+    icon: mdi:access-point
+
+#-------------------------------------------
+# Counter lightining
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Lightning Counter"
+    id: light_counter_temp
+    lambda: |-
+      return (id(light_counter).state);
+    unit_of_measurement: "pcs"
+    accuracy_decimals: 0
+    icon: mdi:lightning-bolt-circle
+
+number:
+  - platform: template
+    name: "${friendly_name} Lightning Counter number"
+    optimistic: true
+    min_value: 0
+    max_value: 2000
+    step: 1
+    id: light_counter
+    internal: true
+
+#-------------------------------------------
+# BINARY SENSORS
+#-------------------------------------------
+binary_sensor:
+#-------------------------------------------
+# Online status 
+# Only API
+#-------------------------------------------
+  - platform: status
+    name: "${friendly_name} Status"
+    id: status_online
+    entity_category: diagnostic
+    icon: mdi:access-point-check
+    
+#-------------------------------------------
+#  Alert lightining status
+#-------------------------------------------
+  - platform: as3935
+    name: "${friendly_name} Storm Alert Raw"
+    icon: mdi:flash-alert-outline
+    id: storm_alert
+    filters:
+      - delayed_off: 80s
+      #- filter_out: nan
+    internal: true
+      
+  # Templated filter out isnan value
+  - platform: template
+    name: "${friendly_name} Storm Alert"
+    lambda: return id(storm_alert).state;
+    filters:
+      lambda: if (isnan(x)) {  return false; } return x;
+    id: storm_alert_template
+
+            
+#-------------------------------------------
+# Deep Sleep binary template
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Deep Sleep - Prevent"
+    id: deep_sleep_prevent
+    icon: mdi:power-sleep
+    entity_category: config
+
+#-------------------------------------------
+# BUTTONS
+#-------------------------------------------
+button:
+#-------------------------------------------
+# Deep Sleep Enable button
+#-------------------------------------------
+  - platform: template
+    name: "${friendly_name} DeepSleep - Disable"
+    icon: mdi:power-sleep
+    id: deepsleep_switch
+    entity_category: config
+    on_press:
+      then:
+        - script.stop: deep_sleep_script
+        - binary_sensor.template.publish:
+            id: deep_sleep_prevent
+            state: True
+        - logger.log: 
+            format: "PRESS BUTTON PREVENT DEEPSLEEP"
+            level: warn
+        - deep_sleep.prevent: deep_sleep_component
+
+#-------------------------------------------
+# RESTART
+# restart = reset prevent deepsleep
+#-------------------------------------------
+  - platform: restart
+    name: "${friendly_name} Restart"
+
+#-------------------------------------------
+# SWITCHES
+#-------------------------------------------
+switch:
+#-------------------------------------------
+# Switch - Adc battery status reading
+# Wiring whit 2n3904 and 2n3906
+#-------------------------------------------
+  - platform: gpio
+    name: "${friendly_name} Battery - Measure"
+    restore_mode: ALWAYS_OFF
+    pin:
+      number: "$battery_adc_switch"
+    id: switch_adc
+    on_turn_on:
+      - then:
+          - delay: 150ms
+          - component.update: batlevel
+          - delay: 150ms
+          - switch.turn_off: switch_adc
+          - globals.set: # after load raw bat value save global and publish template battery state
+              id: battery_global
+              value: !lambda 'return id(batlevel).state;'
+          - component.update: bat_global
+
+#-------------------------------------------
+# INTERVALS - measurement cycling battery
+#-------------------------------------------
+interval:
+  - interval: 2min
+    then:
+      if:
+        condition:
+          binary_sensor.is_on: deep_sleep_prevent
+        then:
+          switch.turn_on: switch_adc
+  - interval: 30s
+    then:
+    # State: True = Prevent deep sleep
+      if:
+        condition:
+          or:
+            - sensor.in_range: # thunder code openweathermap
+                id: weathercode
+                above: 199
+                below: 240
+            - binary_sensor.is_on: storm_alert_template
+            - binary_sensor.is_on: deep_sleep_prevent
+        then:
+          - script.stop: deep_sleep_script
+          - deep_sleep.prevent: deep_sleep_component
+          - logger.log: 
+              format: "PREVENT DEEPSLEEP ALARM ON"
+              level: warn
+    # State: False = Enter deep sleep
+        else:
+          if:
+            condition:
+              and:
+              - sensor.in_range: # all others codes openweathermap
+                  id: weathercode
+                  above: 240
+              - binary_sensor.is_off: storm_alert_template # this sensor is false
+              - binary_sensor.is_off: deep_sleep_prevent # blocking deep sleep button is false
+            then:
+              - script.execute: deep_sleep_script
