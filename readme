@@ -1,1 +1,9 @@
-Franklin
+AMS AS3935 Franklin Lightning Sensor
+
+Parts:
+ - esp32-s
+ - franklin lightining sensor
+ - ldo ht7833 regulator
+ - battery 2000-3000mAh 18650
+ - solar panel 5V 5W
+ - 
