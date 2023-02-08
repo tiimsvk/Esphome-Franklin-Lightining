@@ -48,10 +48,12 @@ LIGHTINING SENSOR:
 
 - SPI WIRING disable voltage regulator.. I couldn't get the correct values in I2C
 Top view 
+```
 ------------------------------------------------------------------------------------------
 PINS: VCC | GND |   SCL   |   MOSI   |   MISO   |   CS   |  SI |   IRQ   | EN_V | A0 | A1
 NAME: 3v3 | GND | SPI_CLK | SPI_MOSI | SPI_MISO | AMS_CS | GND | AMS_IRQ |  NC  | NC | NC 
 ------------------------------------------------------------------------------------------
+```
 
 STATUS LEDS
 GPIO02 -> +LED -> -LED -> 220Ω -> GND
