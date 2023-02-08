@@ -1,14 +1,20 @@
-AS3935 lightning sensor - Lightning detection storm distance
+# AS3935 lightning sensor - Lightning detection storm distance
 Home Assistant and ESPHOME
 
+**FEATURES:**
+- Connection to the home assistant using esphome
+- Lightning detection, their distance and strength
+- Run on solar drive
+- Sleep mode
+- Activation upon detection of snow or weather alarm
+- Battery status
 
-
-PARTS REQUIRED:
+**PARTS REQUIRED:**
  - 1x ESP32-S + 
  - Adapter for ESP32
  - 2x button smd
  - 2x SMD 10kΩ resistor
- - 1x (CJMCU AMS AS3935)[https://www.aliexpress.com/item/32829119257.html]
+ - 1x [CJMCU AMS AS3935](https://www.aliexpress.com/item/32829119257.html)
  - 1x LDO ht7833 regulator
  - 2x Ceramic capacitor 10uF
  - 1x Aluminium Capacitor 470-630uF
@@ -17,7 +23,7 @@ PARTS REQUIRED:
  - 1x Solar panel 5V 5W
  - 1x Diode shottky 1N5817
  
-PARTS OPTIONAL:
+**PARTS OPTIONAL:**
  - 1x NPN3904
  - 1x PNP3906
  - 2x 220Ω resistor
@@ -34,7 +40,7 @@ PARTS OPTIONAL:
  - 1x DC Power Adapter Connector 5.5*2.1 male - female
  - 1x LED red status
  
-CIRCUIT:
+**CIRCUIT:**
 LIGHTINING SENSOR:
 - Position of the sensor must be in a horizontal position (I had a lot of interference with the vertical one).
 - At least 1m from ESP.
@@ -56,29 +62,17 @@ Charging Battery Solar panel
 - protect battery BMS 1s
 - Solar panel + DC009 socket and protect diode shottky 1N5817 low drop 0.3V
   
-
+HOME ASSISTANT CONFIGURATION
+- add custom integration [meteoalarm](https://www.home-assistant.io/integrations/meteoalarm/)
+- add custom integration [openweathermap](https://www.home-assistant.io/integrations/openweathermap/)
   
-
-
-  battery_adc: GPIO33
-
- # ---------------------------------------------
- # HOME ASSISTANTN IMPORTET SENSORS
- # ---------------------------------------------
-  # METEOALARM
-  meteoalarm_event: binary_sensor.meteoalarm
-  weathermap_code: sensor.openweathermap_weather_code
-
-#-------------------------------------------
-# PROTOCOLS
-#-------------------------------------------
- # ----- PROTOCOLS PINS -----
-  # spi
-  spi_miso: GPIO12
-  spi_mosi: GPIO13
-  spi_clk: GPIO14
- # ----- PROTOCOLS SETTINGS -----
-spi:
-  clk_pin: ${spi_clk}
-  mosi_pin: ${spi_mosi}
-  miso_pin: ${spi_miso}
+- add custom sensor for lightning counting in configuration.yaml
+```
+utility_meter:
+  light_counter_daily:
+    source: sensor.weather_lightining_lightning_counter
+    cycle: daily
+  light_counter_monthly:
+    source: sensor.weather_lightining_lightning_counter
+    cycle: monthly
+```
