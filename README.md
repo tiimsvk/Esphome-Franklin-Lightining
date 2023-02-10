@@ -7,7 +7,7 @@ Home Assistant and ESPHOME
 - Lightning detection, their distance and strength
 - Run on solar drive
 - Sleep mode
-- Activation upon detection of snow or weather alarm
+- Activation upon detection of storm or weather alarm
 - Battery status
 
 **PARTS REQUIRED:**
