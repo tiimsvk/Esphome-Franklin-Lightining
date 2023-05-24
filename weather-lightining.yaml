@@ -4,7 +4,6 @@
 # Kontrola funkčnosti počas bleskov 
 # planned add:  condition: api.connected: fixed when no connect and sleep
 # wifi connetcted wait util skontrolovat funkcnost
-# MQ2 porovnat s podkladom od senzoru mq135
 
 #-------------------------------------------
 # SUBTITUTIONS - basic definitions and description of the device
@@ -244,13 +243,13 @@ as3935_spi:
   cs_pin: ${ams_cs}
   irq_pin: ${ams_irq}
   indoor: false
-  noise_level: 2
-  spike_rejection: 3      # Default 2
-  lightning_threshold: 1
-  mask_disturber: false
-  div_ratio: 0
+  noise_level: 2         # Noise floor level is compared to known reference voltage. If this level is exceeded the chip will issue an interrupt to the IRQ pin, broadcasting that it can not operate properly due to noise (INT_NH). Defaults to 2
+  spike_rejection: 3     # Helps to differentiate between false events and actual lightning. Increasing this value increases robustness at the cost of sensitivity to distant events DEFAULT 2
+  lightning_threshold: 1 # The number of lightnings that must appear in a 15-minute time window before a lightning storm is detected DEFAULT 1 (1, 5, 9 or 16)
+  mask_disturber: True   # This setting will return whether or not disturbers trigger the IRQ Pi
+  div_ratio: 0           # DEFAULT
   capacitance: 5
-  watchdog_threshold: 2
+  watchdog_threshold: 1  # Determines the threshold for events that trigger the IRQ pin. DEFAULT 2
 
 #-------------------------------------------
 # TEXT SENSORS
