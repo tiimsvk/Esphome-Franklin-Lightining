@@ -7,9 +7,11 @@
 #-------------------------------------------
 # REVISION
 #-------------------------------------------
-# 2023.09.2.3.0
- # - fixed distance calculator
- # - fixed settings ams3935 whit default settings tested whit SEN-39002: AS3935 Lighhtining "Generator" Shield 
+# 2023.09.2.3.0 - fixed distance calculator
+#               - fixed settings ams3935 whit default settings tested whit SEN-39002: AS3935 Lighhtining "Generator" Shield
+# 2024.06.2.4.0 - change capacitor antenna
+#               - add enable disable after boot tune_antenna
+#               - fixed frequency anetnna
 
 #-------------------------------------------
 # SUBTITUTIONS - basic definitions and description of the device
@@ -50,6 +52,32 @@ substitutions:
    # Power consumption: standby 15μA normal: 80μA measure: 350μA
   ams_cs: GPIO26
   ams_irq: GPIO27
+
+  # TUNNING, CALIBRATE AND MODIFICATIONS
+   # Reference: https://www.improwis.com/projects/sw_chip_AS3935/ 
+   # Setting explain:
+  set_indoor:              "False" # Outdoor or indoor place
+  set_noise_level:         "2"     # Noise floor level is compared to known reference voltage. If this level is exceeded the chip will issue an interrupt to the IRQ pin, broadcasting that it can not operate properly due to noise (INT_NH). Defaults to 2
+  set_spike_rejection:     "2"     # Helps to differentiate between false events and actual lightning. Increasing this value increases robustness at the cost of sensitivity to distant events DEFAULT 2
+  set_lightning_threshold: "1"     # The number of lightnings that must appear in a 15-minute time window before a lightning storm is detected DEFAULT 1 (1, 5, 9 or 16)
+  set_mask_disturber:      "True"  # true This setting will return weather or not disturbers trigger the IRQ Pin
+  set_div_ratio:           "64"    # DEFAULT 16 (128 possible): is the number by which the output frequency on the IRQ pin is multiplied
+  set_capacitor:           "0"     # Set aditional capacitor on integrated in chip possible value 0 ~ 15 (It's possible to add up to 120pF in steps of 8pF to the antenna.)
+  set_watchdog_threshold:  "1"     # Determines the threshold for events that trigger the IRQ pin. DEFAULT 2
+  set_calibration:         "False" # Auto calibrations
+  set_tune_antenna:        "False" # When is true = Antenna tuning: ENABLED - lightning detection will not function in this mode
+  
+  # Ready frequnecy: tune_antenna: true and connect irq pin to oscilloscope and ready frequency (whit multiply div_ration)
+  # The frequency has to be within +-3.5% from the recommended 500 kHz: 
+    # raw: 500     kHz (482.50 ~ 517.500 kHz)
+    # 16:   31.25  kHz ( 30.16 ~  32.340 kHz)
+    # 128:   3.906 kHz (  3.77 ~   4.043 kHz)
+
+  # Modifications:
+   # Change bad value capacitor on module: isntalled cap is 1000pF and 68 pF
+    # Source: https://tasmota.github.io/docs/AS3935/#breakout-boards-issues
+    # After tested good value is: 2x470pF and 220pf = 1160pF (Measure whit multimeter is value smaller)
+    # Measure frequency is: 7.8kHz whit 64 ratio = 499kHz
   
  # ----- CHARGING -----
   # Module: Solar panel usb
@@ -115,6 +143,31 @@ esphome:
     board_build.f_cpu: 160000000L # set cpu clock 160mhz
   build_path: build 
   on_boot:
+    #-------------------------------------------
+    # WAKEUP REASON: 
+    # 0 = reset
+    # 3 = pin wakeup
+    # 4 = sleep reset
+    #-------------------------------------------
+    - priority: 900
+      then:
+        # Find how to esp wake up (deep sleep cycle or rtc pin wake up)
+        # Rain-gauge add one measuring when is wake up whit gauge pin
+        # not send?
+        #- lambda: |-
+        #    id(wakeup_pin) = ((log(esp_sleep_get_ext1_wakeup_status()))/log(2));;
+        #    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON); //INTERNAL PD
+        # send:
+        - lambda: |-
+            int wakeup_reason = esp_sleep_get_wakeup_cause();
+            ESP_LOGD("boot", "wakeup_reason: %d", wakeup_reason);
+            if (wakeup_reason == 3) {   // EXT1
+              double gpio_num = (log(esp_sleep_get_ext1_wakeup_status()))/log(2);
+              ESP_LOGD("boot", "gpio_num: %f", gpio_num);
+            }
+            id(wakeup_pin) = wakeup_reason;
+        - delay: 100ms
+        - component.update: wakeup_temp
     - priority: 600.0
       then:
         - wait_until:
@@ -125,6 +178,9 @@ esphome:
         - component.update: energy_template
     - priority: -200.0
       then:
+        - binary_sensor.template.publish: # first send state off template sensor
+            id: tunning_atenna_enable
+            state: False
         - binary_sensor.template.publish: # first send state on template sensor
             id: deep_sleep_prevent
             state: OFF
@@ -152,8 +208,12 @@ logger:
 # level: warn
 
 ota:
-  safe_mode: false
+  - platform: esphome
+    safe_mode: false
 
+#-------------------------------------------
+# ETHERNET
+#-------------------------------------------
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
@@ -189,13 +249,26 @@ api:
 #        state: true
 
 #-------------------------------------------
+# EXTERNAL COMPONENT
+#-------------------------------------------
+#external_components:
+#  - source: 
+#      type: local
+#      path: custom_component
+#    components:
+#      - as3935
+#      - as3935_spi
+
+#-------------------------------------------
 # DEEP SLEEP
 #-------------------------------------------
 deep_sleep:
   run_duration: 60s
   sleep_duration: 1h # set sleep long time - every time you wake up,
   #sleep_duration: 20s # test wake up,
-  wakeup_pin : "$ams_irq" # Interrupt (out) PIN
+  wakeup_pin : 
+    number: "$ams_irq" # Interrupt (out) PIN
+    allow_other_uses: True 
   wakeup_pin_mode: KEEP_AWAKE # if pin high signal prevent deepsleep 
   id: deep_sleep_component
 
@@ -203,12 +276,12 @@ deep_sleep:
 # SCRIPTS
 #-------------------------------------------
 script:
-#-------------------------------------------
-# Deep sleep script allow
-# prevent deep sleep when raindrop detected
-# if raindrop sensor is wet, it's probably raining, a rain gauge can record the amount of water
-# after raindrop sensor dry go to deep sleep after 120s
-#-------------------------------------------
+  #-------------------------------------------
+  # Deep sleep script allow
+  # prevent deep sleep when raindrop detected
+  # if raindrop sensor is wet, it's probably raining, a rain gauge can record the amount of water
+  # after raindrop sensor dry go to deep sleep after 120s
+  #-------------------------------------------
   - id: deep_sleep_script 
     mode: single
     then:
@@ -229,13 +302,22 @@ script:
 # GLOBALS
 #-------------------------------------------
 globals:
-#-------------------------------------------
-# RESTORE VALUE Battery raw adc sensor
-#-------------------------------------------
+  #-------------------------------------------
+  # RESTORE VALUE Battery raw adc sensor
+  #-------------------------------------------
   - id: battery_global
     type: float
     restore_value: yes
     initial_value: '0.0'
+    
+  #-------------------------------------------
+  # RESTORE VALUE esp_sleep_get_ext1_wakeup_status
+  # Rain-gauge add one measuring when is wake up whit gauge pin
+  #-------------------------------------------
+  - id: wakeup_pin
+    type: uint64_t
+    restore_value: no
+    initial_value: '0'
 
 #-------------------------------------------
 # TIME COMPONENT
@@ -256,25 +338,29 @@ status_led:
 # Lightining detector - AMS 3935
 #-------------------------------------------
 as3935_spi:
-  cs_pin: ${ams_cs}
-  irq_pin: ${ams_irq}
-  indoor: false
-  #noise_level: 2         # 2 Noise floor level is compared to known reference voltage. If this level is exceeded the chip will issue an interrupt to the IRQ pin, broadcasting that it can not operate properly due to noise (INT_NH). Defaults to 2
-  #spike_rejection: 2     # 3 Helps to differentiate between false events and actual lightning. Increasing this value increases robustness at the cost of sensitivity to distant events DEFAULT 2
-  #lightning_threshold: 1 # 1 The number of lightnings that must appear in a 15-minute time window before a lightning storm is detected DEFAULT 1 (1, 5, 9 or 16)
-  #mask_disturber: True   # true This setting will return whether or not disturbers trigger the IRQ Pi
-  #div_ratio: 16           # 0 DEFAULT 16
-  #capacitance: 0         # 5
-  #watchdog_threshold: 1  # Determines the threshold for events that trigger the IRQ pin. DEFAULT 2
-  # calibration: True
+  id: as3935_id_test # ready in source code files
+  cs_pin:   ${ams_cs}
+  irq_pin: 
+    number: ${ams_irq}
+    allow_other_uses: True 
+  indoor:              ${set_indoor}
+  noise_level:         ${set_noise_level}         
+  spike_rejection:     ${set_spike_rejection}     
+  lightning_threshold: ${set_lightning_threshold} 
+  mask_disturber:      ${set_mask_disturber}   
+  div_ratio:           ${set_div_ratio}          
+  capacitance:         ${set_capacitor}         
+  watchdog_threshold:  ${set_watchdog_threshold}
+  calibration:         ${set_calibration}    
+  tune_antenna:        ${set_tune_antenna}    
   
 #-------------------------------------------
 # TEXT SENSORS
 #-------------------------------------------
 text_sensor:
-#-------------------------------------------
-# Meteoalarm import home assistant sensor
-#-------------------------------------------
+  #-------------------------------------------
+  # Meteoalarm import home assistant sensor
+  #-------------------------------------------
   - platform: homeassistant
     internal: true
     id: meteoalarm_event
@@ -297,9 +383,21 @@ text_sensor:
 # SENSORS
 #-------------------------------------------
 sensor:
-#-------------------------------------------
-# Openweathermap import home assistant sensor
-#-------------------------------------------
+  #-------------------------------------------
+  # Wake Up template 
+  #-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Wake Up Pin"
+    id: wakeup_temp
+    accuracy_decimals: 0
+    #internal: True
+    lambda: |-
+      return (id(wakeup_pin));
+    update_interval: never
+    
+  #-------------------------------------------
+  # Openweathermap import home assistant sensor
+  #-------------------------------------------
   - platform: homeassistant
     internal: true
     id: weathermap_code
@@ -316,29 +414,29 @@ sensor:
     update_interval: never
     accuracy_decimals: 0
    
-#-------------------------------------------
-# Wifi signal component
-#------------------------------------------- 
+  #-------------------------------------------
+  # Wifi signal component
+  #------------------------------------------- 
   - platform: wifi_signal
     name: "${friendly_name} Signal"
     id: wifisignal
     update_interval: never
 
-#-------------------------------------------
-# Raw Battery sensor
-#-------------------------------------------
+  #-------------------------------------------
+  # Raw Battery sensor
+  #-------------------------------------------
   - platform: adc
     pin: "$battery_adc"
     #name: "${friendly_name} Battery Raw"
     update_interval: never
-    attenuation: 11db
+    attenuation: 12db
     id: batlevel
     internal: True
 
-#-------------------------------------------
-# Battery sensor
-# ADC units whit units %
-#-------------------------------------------
+  #-------------------------------------------
+  # Battery sensor
+  # ADC units whit units %
+  #-------------------------------------------
   - platform: template
     name: "${friendly_name} Battery"
     update_interval: never
@@ -390,10 +488,10 @@ sensor:
         #then:
           #component.update: distance_template
 
-#-------------------------------------------
-# Template - Energy
-# Templated filter out isnan value
-#-------------------------------------------
+  #-------------------------------------------
+  # Template - Energy
+  # Templated filter out isnan value
+  #-------------------------------------------
   - platform: template
     name: "${friendly_name} Lightning Energy"
     id: energy_template
@@ -421,12 +519,12 @@ sensor:
 #    icon: mdi:access-point
 #    update_interval: never
 
-#-------------------------------------------
-# Template - Distance 2
-# Distance calculator alternative
-# https://sites.google.com/view/as3935workbook/home
-# Templated filter out isnan value
-#-------------------------------------------   
+  #-------------------------------------------
+  # Template - Distance 2
+  # Distance calculator alternative
+  # https://sites.google.com/view/as3935workbook/home
+  # Templated filter out isnan value
+  #-------------------------------------------   
   - platform: template
     name: "${friendly_name} Distance Storm"
     id: distance_template2
@@ -445,9 +543,9 @@ sensor:
     icon: mdi:access-point
     update_interval: never
 
-#-------------------------------------------
-# Counter lightining
-#-------------------------------------------
+  #-------------------------------------------
+  # Counter lightining
+  #-------------------------------------------
   - platform: template
     name: "${friendly_name} Lightning Counter"
     id: light_counter_temp
@@ -458,9 +556,36 @@ sensor:
     icon: mdi:lightning-bolt-circle
     update_interval: never
 
+  #-------------------------------------------
+  # TUNNING AN CALIBRATE ANTENNA
+  # whit pulse counter 
+  # after press button tune antanna show frequency kHz
+  #-------------------------------------------
+  - platform: pulse_counter
+    pin: 
+      number: $ams_irq
+      allow_other_uses: True
+    name: "Calibrate - Frequency Antenna"
+    icon: mdi:video-input-antenna
+    internal_filter: 10us
+    update_interval: never
+    id: frequency
+    filters:
+      - lambda: |-
+          // Convert pulse count to frequency in Hz
+          return x / 1000.0 + 30; //35 is offset
+    unit_of_measurement: "kHz"
+    entity_category: diagnostic
+
+#-------------------------------------------
+# NUMBERS
+#-------------------------------------------
 number:
+  #-------------------------------------------
+  # Number off lightining
+  #-------------------------------------------
   - platform: template
-    name: "${friendly_name} Lightning Counter number"
+    # name: "${friendly_name} Lightning Counter number"
     optimistic: true
     min_value: 0
     max_value: 5000
@@ -471,23 +596,55 @@ number:
       then:
           component.update: light_counter_temp
 
+#  - platform: template
+#    name: "${friendly_name} Capacitor"
+#    optimistic: true
+#    min_value: 0
+#    max_value: 15
+#    step: 1
+#    id: capacitor_set
+#    on_value:
+#      then:
+#        - lambda: id(as3935_id_test).write_capacitance(x);
+        #- lambda: id(as3935_id).read_capacitance();
+
+#  - platform: template
+#    name: "${friendly_name} Count freq"
+#    optimistic: true
+#    min_value: 0
+#    max_value: 1000000
+#    step: 1
+#    id: counter_freq
+
 #-------------------------------------------
 # BINARY SENSORS
 #-------------------------------------------
 binary_sensor:
-#-------------------------------------------
-# Online status 
-# Only API
-#-------------------------------------------
+  #- platform: gpio
+    #id: pulse_counter_irq
+    #pin: 
+    #  number: $ams_irq
+    #  allow_other_uses: True
+    #name: "Pulse Counter"
+    #internal_filter: 0us
+    #update_interval: never
+    #on_state:
+    #  then:
+    #    - number.increment: counter_freq
+
+  #-------------------------------------------
+  # Online status 
+  # Only API
+  #-------------------------------------------
   - platform: status
     name: "${friendly_name} Status"
     id: status_online
     entity_category: diagnostic
     icon: mdi:access-point-check
     
-#-------------------------------------------
-# Alert lightining status
-#-------------------------------------------
+  #-------------------------------------------
+  # Alert lightining status
+  #-------------------------------------------
   - platform: as3935
     name: "${friendly_name} Storm Alert Raw"
     icon: mdi:flash-alert-outline
@@ -505,22 +662,32 @@ binary_sensor:
       lambda: if (isnan(x)) {  return false; } return x;
     id: storm_alert_template
             
-#-------------------------------------------
-# Deep Sleep binary template
-#-------------------------------------------
+  #-------------------------------------------
+  # Deep Sleep binary template
+  #-------------------------------------------
   - platform: template
     name: "${friendly_name} Deep Sleep - Prevent"
     id: deep_sleep_prevent
     icon: mdi:power-sleep
-    entity_category: config
+    entity_category: diagnostic
+
+  #-------------------------------------------
+  # Calibrate tunning anetnna enable/disable
+  # measure interval frequency
+  #-------------------------------------------
+  - platform: template
+    name: "${friendly_name} Calibrate - Tunning Enable"
+    id: tunning_atenna_enable
+    icon: mdi:video-input-antenna
+    entity_category: diagnostic
 
 #-------------------------------------------
 # BUTTONS
 #-------------------------------------------
 button:
-#-------------------------------------------
-# Deep Sleep Enable button
-#-------------------------------------------
+  #-------------------------------------------
+  # Deep Sleep Enable button
+  #-------------------------------------------
   - platform: template
     name: "${friendly_name} DeepSleep - Disable"
     icon: mdi:power-sleep
@@ -537,21 +704,63 @@ button:
             level: warn
         - deep_sleep.prevent: deep_sleep_component
 
-#-------------------------------------------
-# RESTART
-# restart = reset prevent deepsleep
-#-------------------------------------------
+  #-------------------------------------------
+  # RESTART
+  # restart = reset prevent deepsleep
+  # reset after tunning antenna
+  #-------------------------------------------
   - platform: restart
     name: "${friendly_name} Restart"
+
+  #-------------------------------------------
+  # TUNNING AN CALIBRATE ANTENNA
+  # test version
+  # - Tune antenna enable:
+  #     lambda: id(as3935_id).tune_antenna(); -> enable tunning antenna (disable after restart mcu)
+  # - Set value capacitance:
+  #      lambda: id(as3935_id).set_capacitance(10);
+  #      lambda: id(as3935_id).write_capacitance(10);
+  #      lambda: id(as3935_id).read_capacitance();
+  # Not send value?
+  #-------------------------------------------
+  - platform: template
+    name: "Calibrate - Tune Antenna"
+    id: tune_antenna
+    icon: mdi:video-input-antenna
+    on_press:
+      then:
+        - lambda: id(as3935_id_test).tune_antenna();
+        - binary_sensor.template.publish:
+            id: tunning_atenna_enable
+            state: True
+    entity_category: config
+  
+  - platform: template
+    name: "Calibrate - Capacitance"
+    on_press:
+      then:
+        - lambda: id(as3935_id_test).set_capacitance(10);
+        - delay: 1s
+        - lambda: id(as3935_id_test).write_capacitance(10);
+        - delay: 1s
+        - lambda: id(as3935_id_test).read_capacitance();
+    entity_category: config
+
+  - platform: template
+    name: "Calibrate - Oscillator"
+    on_press:
+      then:
+        - lambda: id(as3935_id_test).calibrate_oscillator();
+    entity_category: config
 
 #-------------------------------------------
 # SWITCHES
 #-------------------------------------------
 switch:
-#-------------------------------------------
-# Switch - Adc battery status reading
-# Wiring whit 2n3904 and 2n3906
-#-------------------------------------------
+  #-------------------------------------------
+  # Switch - Adc battery status reading
+  # Wiring whit 2n3904 and 2n3906
+  #-------------------------------------------
   - platform: gpio
     name: "${friendly_name} Battery - Measure"
     restore_mode: ALWAYS_OFF
@@ -570,9 +779,10 @@ switch:
           - component.update: bat_global
 
 #-------------------------------------------
-# INTERVALS - measurement cycling battery
+# INTERVALS
 #-------------------------------------------
 interval:
+  # measurement cycling battery
   - interval: 2min
     then:
       if:
@@ -580,6 +790,7 @@ interval:
           binary_sensor.is_on: deep_sleep_prevent
         then:
           switch.turn_on: switch_adc
+  # controlling weather forecast
   - interval: 30s
     then:
     # State: True = Prevent deep sleep
@@ -610,3 +821,11 @@ interval:
               - binary_sensor.is_off: deep_sleep_prevent # blocking deep sleep button is false
             then:
               - script.execute: deep_sleep_script
+  # after tunning atenna enable frequency showing
+  - interval: 1s
+    then:
+      if:
+        condition: 
+          - binary_sensor.is_on: tunning_atenna_enable
+        then:
+          - component.update: frequency
