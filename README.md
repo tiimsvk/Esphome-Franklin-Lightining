@@ -9,6 +9,7 @@ Home Assistant and ESPHOME
 - Sleep mode
 - Activation upon detection of storm or weather alarm
 - Battery status
+- Showing oscillator frequency on anetnna
 
 **PARTS REQUIRED:**
  - 1x ESP32-S + 
@@ -40,6 +41,9 @@ Home Assistant and ESPHOME
  - 1x JST 2.54 connector male - female whit cable
  - 1x DC Power Adapter Connector 5.5*2.1 male - female
  - 1x LED red status
+
+ **PARTS OPTIONAL CALIBRATING ANTENNA:**
+ - ceramics capacitor
  
 **CIRCUIT:**
 LIGHTINING SENSOR:
@@ -90,3 +94,23 @@ everything needed in the file "weather-lightining.yaml"
 **RESOLUTS**
 ![Record](record.jpg)
 
+**CALIBRATIG ANTENNA**
+[Reference](https://www.improwis.com/projects/sw_chip_AS3935/)
+
+Ready frequnecy: tune_antenna: true and connect irq pin to oscilloscope and ready frequency (whit multiply div_ration)
+(implementet on this code ready whit pulse_counter frequency whitout oscilloscope)
+The frequency has to be within +-3.5% from the recommended 500 kHz: 
+raw: 500     kHz (482.50 ~ 517.500 kHz)
+16:   31.25  kHz ( 30.16 ~  32.340 kHz)
+128:   3.906 kHz (  3.77 ~   4.043 kHz)
+
+Modifications:
+Change bad value capacitor on module: isntalled cap is 1000pF and 68 pF
+[Source](https://tasmota.github.io/docs/AS3935/#breakout-boards-issues)
+After tested good value is: 1x1nF and 100pf = 1100pF (Measure whit multimeter is value capacitor is smaller)
+Measure frequency is: 7.8kHz whit 64 ratio = 499kHz
+![20240530_101527](https://github.com/tiimsvk/Esphome-Franklin-Lightining/assets/52893640/8a2eb9b7-f2b1-46c4-a096-247d20db8b41)
+![20240530_101539](https://github.com/tiimsvk/Esphome-Franklin-Lightining/assets/52893640/ecc695ab-13c1-4e66-b0de-a0f1fe8442f7)
+
+Tester:
+![20240530_101544](https://github.com/tiimsvk/Esphome-Franklin-Lightining/assets/52893640/4ee7f335-88b3-408a-bfe6-5101cba29a0d)
