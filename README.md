@@ -2,6 +2,15 @@
 Home Assistant and ESPHOME
 ![Main photo of the weather station](title.jpg)
 
+**CHANGELOG:**
+- replace esp32-s to esp32-c3
+- replace new sensor as3935
+- fixed setup capacitance code
+- add RC filter
+- add time interval lightning
+- autocalibrate and showing frequency
+- add event on new code
+- 
 **FEATURES:**
 - Connection to the home assistant using esphome
 - Lightning detection, their distance and strength
