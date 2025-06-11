@@ -12,57 +12,93 @@
 # 2024.06.2.4.0 - change capacitor antenna
 #               - add enable disable after boot tune_antenna
 #               - fixed frequency anetnna
+# 2025.06.3.0.0 - replace esp32-s to esp32-c3
+#               - replace new sensor as3935
+#               - fixed setup capacitance code
 
 #-------------------------------------------
 # SUBTITUTIONS - basic definitions and description of the device
 #-------------------------------------------
 substitutions:
-  friendly_name: Weather-lightining
-  device_name: ESP-Lightining
-  device_description: "Lightining sensor CJMCU AMS AS3935 (https://www.homeassistant-cz.cz/viewtopic.php?f=56&t=379&p=3711#p3711), Deep Sleep whit wakeup pin"
-  created_by: "StudioTiiM 2022-2023"
+  friendly_name: Weather-lightning
+  device_name: weather-lightning
+  device_description: "Lightning sensor AS3935 (https://www.homeassistant-cz.cz/viewtopic.php?f=56&t=379&p=3711#p3711), Deep Sleep whit wakeup pin"
+  created_by: "StudioTiiM 2022-2025"
   
 #-------------------------------------------
 # DEFINE PINS AND VARIABILES
 # CIRCUIT AND MODULES - basic definitions and description of the device
 #-------------------------------------------
- # ----- MCU -----
-  # Module: ESP32-S + adapter
+# ----- MCU -----
+  # Module: ESP32-C3 super mini whit IPEX
+   # LDO: ME6211 Quiescent current max 3µA
+   # Power Consumption 5V: 
+    # Peak start:     250mA
+    # Peak wifi:      150mA https://robdobson.com/2023/11/investigating-esp32-c3-power-management/
+    # Peak Normal:     70mA 
+    # Peak Wifi off:   30mA
+    # DeepSleep:     ~ 9.6μA 90 UA
+    # DeepSleep whit sensor:    1.0mA
+    # no sensor sleep 383μA
+    #409 3.3v
+    # Circuit: led blue - > 5.1k -> GPIO08 -> pullup 10k -> VCC
+   # Modifiations:
+    # Unsolder: 
+     # - Diode usb C3 drop voltage
+     # - Resistor power led
+     # - WS led
+     # - Resistor status led
+  
+   # Description pins:
+    # PINS ESP32    | FUNCTION     | INPUT | OUTPUT | ADC | PWM | I2C           | SPI  | RESISTOR             | BOOT       | FLASH   | HIGH AT BOOT | BOOT FAILS | NOTES
+    # ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    # GPIO02 *      | STRAPPING    | OK    | OK!    |     | OK  | OK            |      | INTERNAL PULLUP      |           |          | PWM          | LOW
+    # GPIO08 *      | STRAPPING    | OK    | OK!    |     | OK  | OK            |      | INTERNAL PULLUP      |           |          | PWM          | LOW
+
   
  # ----- LEDS -----
    # Modul: Status led
    # Specification: 1x yellow led
    # Circuit: 22Ω resistor to GND
    # Power consumption: 15mA
-  status_led_pin: GPIO21
+  status_pin: GPIO07
 
  # ----- LIGHTINING SENSOR -----
+  # OLD
   # Module: CJMCU AMS AS3935
+  # NEW
+  # Module: WCMCU AMS AS3935
    # Specifications: Voltage: 2.4 ~ 5.5V / Operational Range: Temperature: -40 ~ +85°C Humidity: 5 ~ 85% (Note: Sensor to place waterproof box) / Accuracy: Storm activity 1 ~ 40 km (actual measurement max 30 km); detected cloud - ground; cloud - cloud
    # Circuit: Interface: SPI (I2C without success); disable voltage regulator
 
     # Top view 
-    # ------------------------------------------------------------------------------------------
-    # PINS:  VCC | GND |   SCL   |   MOSI   |   MISO   |   CS   |  SI |   IRQ   | EN_V | A0 | A1
-    # NAME:  3v3 | GND | SPI_CLK | SPI_MOSI | SPI_MISO | AMS_CS | GND | AMS_IRQ |  NC  | NC | NC
-    # COLOR: BR  | BRW |  GREEN  | GREEN W  |  ORANGE  | ORG W  | BRW |  BLUE   |  NC  | NC | NC
-    # ------------------------------------------------------------------------------------------
-    
+    # ---------------------------------------------------------------------------------------------------
+    # PINS:       VCC | GND |   SCL   |   MOSI   |   MISO   |   CS   |  SI |   IRQ   | EN_V | A0  | A1  |
+    # CONNECTED:  3V3 | GND | SPI_CLK | SPI_MOSI | SPI_MISO | AMS_CS | GND | AMS_IRQ |  GND | VCC | VCC |
+    # COLOR:      ORG | BRW |  ORG W  | GREEN    | GREEN W  | BROW W | -   |  BLUE   |  -   | -   | -   |
+    # MCU PIN     3V3 | GND | GPIO02  | GPIO01   |  GPIO0   | GPIO03 | GND |  GPIO05 | GND  |
+    # COLOR MCU:  ORG   
+    # ---------------------------------------------------------------------------------------------------
+    # LAN CONNECTOR
+    # GND GND  BLACK BROWN  + | + BROWN W  BROWN  CS   G03
+    # G01 MOSI GREEN GREEN  + | + GREEN W  YELLOW MISO G0
+    # VCC VCC  RED   ORANGE + | + ORANGE W ORANGE SCL  G02
+    # G05 IRQ  BLUE  BLUE   + | + BLUE W   -
+
    # Position: Position horizontally (not vertically)
    # Power consumption: standby 15μA normal: 80μA measure: 350μA
-  ams_cs: GPIO26
-  ams_irq: GPIO27
+
 
   # TUNNING, CALIBRATE AND MODIFICATIONS
    # Reference: https://www.improwis.com/projects/sw_chip_AS3935/ 
    # Setting explain:
   set_indoor:              "False" # Outdoor or indoor place
   set_noise_level:         "2"     # Noise floor level is compared to known reference voltage. If this level is exceeded the chip will issue an interrupt to the IRQ pin, broadcasting that it can not operate properly due to noise (INT_NH). Defaults to 2
-  set_spike_rejection:     "2"     # Helps to differentiate between false events and actual lightning. Increasing this value increases robustness at the cost of sensitivity to distant events DEFAULT 2
+  set_spike_rejection:     "3"     # Helps to differentiate between false events and actual lightning. Increasing this value increases robustness at the cost of sensitivity to distant events DEFAULT 2
   set_lightning_threshold: "1"     # The number of lightnings that must appear in a 15-minute time window before a lightning storm is detected DEFAULT 1 (1, 5, 9 or 16)
-  set_mask_disturber:      "True"  # true This setting will return weather or not disturbers trigger the IRQ Pin
-  set_div_ratio:           "64"    # DEFAULT 16 (128 possible): is the number by which the output frequency on the IRQ pin is multiplied
-  set_capacitor:           "0"     # Set aditional capacitor on integrated in chip possible value 0 ~ 15 (It's possible to add up to 120pF in steps of 8pF to the antenna.)
+  set_mask_disturber:      "False" # true This setting will return weather or not disturbers trigger the IRQ Pin
+  set_div_ratio:           "16"    # DEFAULT 16 (128 possible): is the number by which the output frequency on the IRQ pin is multiplied
+  set_capacitor:           "0"     # Set aditional capacitor on integrated in chip possible value 0 ~ 15 (It's possible to add up to 120pF in steps of 8pF to the antenna.) (previous 10)
   set_watchdog_threshold:  "1"     # Determines the threshold for events that trigger the IRQ pin. DEFAULT 2
   set_calibration:         "False" # Auto calibrations
   set_tune_antenna:        "False" # When is true = Antenna tuning: ENABLED - lightning detection will not function in this mode
@@ -73,11 +109,15 @@ substitutions:
     # 16:   31.25  kHz ( 30.16 ~  32.340 kHz)
     # 128:   3.906 kHz (  3.77 ~   4.043 kHz)
 
+  # OLD sensor
   # Modifications:
    # Change bad value capacitor on module: isntalled cap is 1000pF and 68 pF
     # Source: https://tasmota.github.io/docs/AS3935/#breakout-boards-issues
     # After tested good value is: 2x470pF and 220pf = 1160pF (Measure whit multimeter is value smaller)
     # Measure frequency is: 7.8kHz whit 64 ratio = 499kHz
+  
+  # Circuit: added RC filter to VCC 22Ω in series and ceramic capacitor 104 to GND
+  #          all cable whit EMI filter Ferite 
   
  # ----- CHARGING -----
   # Module: Solar panel usb
@@ -85,7 +125,7 @@ substitutions:
    # Type: Monocrystalline 
    # Solar panel dimension
    # Circuit: protect diode shottky 1N5817 low drop 0.3V
-  width_panel: "0.07" # m
+  width_panel:  "0.07" # m
   height_panel: "0.14" # m
   
   # Module: TP4056 Lithium Battery Charger Module USB micro whit balancer protect
@@ -106,171 +146,177 @@ substitutions:
    # Type battery: B0PGE100 1Icp4/64/93 10.87Whr
 
    # Circuit 1: ADC battery measure switch: connect on MCU 220Ω to Base NPN3904 and BatVCC 220Ω to base PNP3906 transistor
-  battery_adc_switch: GPIO32
+  battery_adc_switch: GPIO06
    # Circuit 2: ADC battery measure voltage: Divider 4.2V to gpio 680k(GND) and 330k(BAT+) 2.82V
-  battery_adc: GPIO33
+  battery_adc: GPIO04
 
  # ---------------------------------------------
  # HOME ASSISTANTN IMPORTET SENSORS
  # ---------------------------------------------
   # METEOALARM
-  meteoalarm_event: binary_sensor.meteoalarm
-  weathermap_code: sensor.openweathermap_weather_code
+  meteoalarm_event:  binary_sensor.meteoalarm
+  weathermap_code:   sensor.openweathermap_weather_code
+  accuweather_state: weather.zelenydom
 
 #-------------------------------------------
 # PROTOCOLS
 #-------------------------------------------
+
  # ----- PROTOCOLS PINS -----
   # spi
-  spi_miso: GPIO12
-  spi_mosi: GPIO13
-  spi_clk: GPIO14
+  spi_miso: GPIO0
+  spi_mosi: GPIO01
+  spi_clk:  GPIO09
+  # ams
+  ams_cs:   GPIO03
+  ams_irq:  GPIO05
+  
  # ----- PROTOCOLS SETTINGS -----
 spi:
-  clk_pin: ${spi_clk}
+  clk_pin:  
+    number: ${spi_clk}
+    ignore_strapping_warning: true
   mosi_pin: ${spi_mosi}
   miso_pin: ${spi_miso}
-
+  
+as3935_spi:
+  id:                  as3935_id_test # ready in source code files
+  cs_pin:              ${ams_cs}
+  irq_pin: 
+    number:            ${ams_irq}
+    allow_other_uses:  True
+  indoor:              ${set_indoor}
+  noise_level:         ${set_noise_level}         
+  spike_rejection:     ${set_spike_rejection}     
+  lightning_threshold: ${set_lightning_threshold} 
+  mask_disturber:      ${set_mask_disturber}   
+  div_ratio:           ${set_div_ratio}          
+  capacitance:         ${set_capacitor}         
+  watchdog_threshold:  ${set_watchdog_threshold}
+  calibration:         ${set_calibration}    
+  tune_antenna:        ${set_tune_antenna} 
+  
 #-------------------------------------------
-# ESP Main settings
+# ESPHOME PLATFORM SETTINGS
 #-------------------------------------------
 esphome:
-  name: weather-lightining
+  name: weather-lightning
   project:
-    name: "studiotiim.weather_lightinig"
-    version: 2023.09.2.3.0
+    name: "studiotiim.weather_lightnig"
+    version: 2025.06.3.0.0
   platformio_options:
-    board_build.f_cpu: 160000000L # set cpu clock 160mhz
-  build_path: build 
+    board_build.f_flash: 40000000L
+    board_build.flash_mode: dio
+    board_build.flash_size: 4MB
   on_boot:
-    #-------------------------------------------
-    # WAKEUP REASON: 
-    # 0 = reset
-    # 3 = pin wakeup
-    # 4 = sleep reset
-    #-------------------------------------------
-    - priority: 900
+    # priority: 900.0
+    # then:
+    #   - lambda: gpio_hold_dis(GPIO_NUM_8);
+          
+    - priority: -100.0
       then:
-        # Find how to esp wake up (deep sleep cycle or rtc pin wake up)
-        # Rain-gauge add one measuring when is wake up whit gauge pin
-        # not send?
-        #- lambda: |-
-        #    id(wakeup_pin) = ((log(esp_sleep_get_ext1_wakeup_status()))/log(2));;
-        #    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON); //INTERNAL PD
-        # send:
-        - lambda: |-
-            int wakeup_reason = esp_sleep_get_wakeup_cause();
-            ESP_LOGD("boot", "wakeup_reason: %d", wakeup_reason);
-            if (wakeup_reason == 3) {   // EXT1
-              double gpio_num = (log(esp_sleep_get_ext1_wakeup_status()))/log(2);
-              ESP_LOGD("boot", "gpio_num: %f", gpio_num);
-            }
-            id(wakeup_pin) = wakeup_reason;
-        - delay: 100ms
-        - component.update: wakeup_temp
-    - priority: 600.0
-      then:
-        - wait_until:
-            condition:
-              wifi.connected:  #  timeout:    HOW TO USE IT?
-            timeout: 30s
-        - component.update: distance_template2
-        - component.update: energy_template
-    - priority: -200.0
-      then:
-        - binary_sensor.template.publish: # first send state off template sensor
-            id: tunning_atenna_enable
-            state: False
-        - binary_sensor.template.publish: # first send state on template sensor
-            id: deep_sleep_prevent
-            state: OFF
-        - component.update: bat_global # fisrt update battery template after update raw adc battery sensor (else nan value send)
-        - delay: 1s
-        #- binary_sensor.template.publish:
-        #    id: status_online
-        #    state: true
+        - component.update: wake_up_reason
+        - component.update: reset_reason
+        - component.update: event_as3935
+        - component.update: distance_template
+        - lambda: if (isnan(id(energy).state))      { id(energy).publish_state(0.0);            }
+        - lambda: if (isnan(id(distance).state))    { id(distance).publish_state(0.0);          }
+        - lambda: if (isnan(id(distance).state))    { id(distance_template).publish_state(0.0); }
+        - lambda: if (isnan(id(storm_alert).state)) { id(storm_alert).publish_state(false);     }
+        - lambda: return id(tunning_atenna_enable).publish_state(false);
+        - lambda: return id(deep_sleep_prevent).publish_state(false);
+        - lambda: id(frequency).publish_state(id(frequency_global));
         - component.update: wifisignal
-        - delay: 5s
-        - switch.turn_on: switch_adc #adc battery status reading when delay 5 second to measure more accurate values
+        - component.update: bat_global
 
+  #on_shutdown: 
+  #  then:
+  #      - lambda: |-
+  #          //esp_sleep_pd_config(ESP_PD_DOMAIN_RC_FAST, ESP_PD_OPTION_OFF);
+  #          //esp_sleep_pd_config(ESP_PD_DOMAIN_RTC8M, ESP_PD_OPTION_OFF);
+  #          //gpio_deep_sleep_hold_en();
+  #          //gpio_hold_en(GPIO_NUM_7);
+  #          ////gpio_hold_en(GPIO_NUM_8);
+  #          //gpio_hold_en(GPIO_NUM_9);
+  #          //gpio_hold_en(GPIO_NUM_10);
+  #          //gpio_hold_en(GPIO_NUM_20);
+  #          //gpio_hold_en(GPIO_NUM_21);
 
-  on_shutdown:
-    - priority: -801.0
-      then:
-        - logger.log: 
-            format: "go to offline"
-            level: warn
-
+#-------------------------------------------
+# ESP MCU SETTINGS
+#-------------------------------------------
 esp32:
-  board: esp32dev
+  board:     esp32-c3-devkitm-1  # Pinout: https://www.sudo.is/docs/esphome/boards/esp32c3supermini/#pinout
+  variant:   ESP32C3
+  framework:
+    type:    esp-idf
 
+#-------------------------------------------
+# LOGGER
+#-------------------------------------------
 logger:
+  logs: 
+    esp-idf:     INFO
+    text_sensor: INFO
 # level: warn
 
 ota:
   - platform: esphome
-    safe_mode: false
+    # safe_mode: false
 
 #-------------------------------------------
 # ETHERNET
 #-------------------------------------------
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
+  ssid:         !secret wifi_ssid
+  password:     !secret wifi_password
   manual_ip:
-    static_ip: 192.168.31.121
-    gateway: 192.168.31.1
-    subnet: 255.255.255.0
+    static_ip:  192.168.31.93
+    gateway:    192.168.31.1
+    subnet:     255.255.255.0
   fast_connect: True
-
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
-  ap:
-    ssid: "$device_name Hotspot"
-    password: "passlightining"
-
-captive_portal:
-api:
-#mqtt:
-#  broker: '192.168.31.212'
-#  username: !secret mqtt_username
-#  password: !secret mqtt_password
-#  discovery: true
-#  birth_message:
-#    topic: $device_name/status_on
-#    payload: online
-#  will_message:
-#    topic: $device_name/status_off
-#    payload: offline
-
-#  on_connect:
-#    - delay: 500ms
-#    - binary_sensor.template.publish:
-#        id: status_online
-#        state: true
-
-#-------------------------------------------
-# EXTERNAL COMPONENT
-#-------------------------------------------
-#external_components:
-#  - source: 
-#      type: local
-#      path: custom_component
-#    components:
-#      - as3935
-#      - as3935_spi
 
 #-------------------------------------------
 # DEEP SLEEP
+# Only pins 0, 1, 2, 3, 4, 5 support wakeup on ESP32 C3
+# esp_sleep_get_wakeup_cause:
+
+#  0 - ESP_SLEEP_WAKEUP_UNDEFINED:        In case of deep sleep, reset was not caused by exit from deep sleep
+#  1 - ESP_SLEEP_WAKEUP_ALL:              Not a wakeup cause, used to disable all wakeup sources with esp_sleep_disable_wakeup_source
+#  2 - ESP_SLEEP_WAKEUP_EXT0:             external signal using RTC_IO
+#  3 - ESP_SLEEP_WAKEUP_EXT1:             external signal using RTC_CNTL
+#  4 - ESP_SLEEP_WAKEUP_TIMER:            timer
+#  5 - ESP_SLEEP_WAKEUP_TOUCHPAD:         touchpad
+#  6 - ESP_SLEEP_WAKEUP_ULP:              ULP program
+#  7 - ESP_SLEEP_WAKEUP_GPIO:             GPIO (light sleep only on ESP32, S2 and S3)
+#  8 - ESP_SLEEP_WAKEUP_UART:             UART (light sleep only)
+#  9 - ESP_SLEEP_WAKEUP_WIFI:             WIFI (light sleep only)
+# 10 - ESP_SLEEP_WAKEUP_COCPU:           COCPU int
+# 11 - ESP_SLEEP_WAKEUP_COCPU_TRAP_TRIG: COCPU crash
+# 12 - ESP_SLEEP_WAKEUP_BT:              BT (light sleep only)
 #-------------------------------------------
 deep_sleep:
-  run_duration: 60s
-  sleep_duration: 1h # set sleep long time - every time you wake up,
-  #sleep_duration: 20s # test wake up,
+  id:                 deep_sleep_component
+  sleep_duration:     30s
+  run_duration:       60s
   wakeup_pin : 
-    number: "$ams_irq" # Interrupt (out) PIN
+    number:          "$ams_irq" # Interrupt (out) PIN
     allow_other_uses: True 
-  wakeup_pin_mode: KEEP_AWAKE # if pin high signal prevent deepsleep 
-  id: deep_sleep_component
+  wakeup_pin_mode:    KEEP_AWAKE # if pin high signal prevent deepsleep 
+
+  
+#-------------------------------------------
+# MQTT, API AND HTTP
+#-------------------------------------------
+api:
+
+#-------------------------------------------
+# TIME COMPONENT
+#-------------------------------------------
+time:
+  - platform:  homeassistant
+    id:        hatime
+    timezone: "Europe/Bratislava"
 
 #-------------------------------------------
 # SCRIPTS
@@ -287,15 +333,15 @@ script:
     then:
       - delay: 30s
       - sensor.template.publish:
-          id: distance_template2
+          id: distance
           state: 0.0
       - sensor.template.publish:
-          id: energy_template
+          id: energy
           state: 0.0
       - logger.log: 
           format: "BEGIN DEEPSLEEP SCRIPT"
           level: warn
-      - delay: 10s
+      - delay:   10s
       - deep_sleep.allow: deep_sleep_component
 
 #-------------------------------------------
@@ -305,170 +351,186 @@ globals:
   #-------------------------------------------
   # RESTORE VALUE Battery raw adc sensor
   #-------------------------------------------
-  - id: battery_global
-    type: float
-    restore_value: yes
+  - id:             battery_global
+    type:           float
+    restore_value:  yes
     initial_value: '0.0'
     
   #-------------------------------------------
   # RESTORE VALUE esp_sleep_get_ext1_wakeup_status
-  # Rain-gauge add one measuring when is wake up whit gauge pin
   #-------------------------------------------
-  - id: wakeup_pin
-    type: uint64_t
+  - id:             wakeup_pin
+    type:           uint64_t
+    restore_value:  no
+    initial_value: '0'
+    
+  #-------------------------------------------
+  # RESTORE VALUE antenna frequency
+  #-------------------------------------------
+  - id:             frequency_global
+    type:           float
+    restore_value:  yes
+    initial_value: '0.0'
+
+  - id: last_lightning_time
+    type: unsigned long
     restore_value: no
     initial_value: '0'
 
+  - id: lightning_interval
+    type: float
+    restore_value: no
+    initial_value: '0'
 #-------------------------------------------
-# TIME COMPONENT
-#-------------------------------------------
-time:
-  - platform: sntp
-    id: esptime
-    timezone: "Europe/Bratislava"
-
-#-------------------------------------------
-# STATUS LED
-# Red led resistor 220R
+# STATUS LED on breaking board 
 #-------------------------------------------
 status_led:
-  pin: "$status_led_pin"
+  pin: 
+    number: "$status_pin"
+    #ignore_strapping_warning: true
   
 #-------------------------------------------
-# Lightining detector - AMS 3935
+# EXTERNAL AND CUSTOM COMPONENT
 #-------------------------------------------
-as3935_spi:
-  id: as3935_id_test # ready in source code files
-  cs_pin:   ${ams_cs}
-  irq_pin: 
-    number: ${ams_irq}
-    allow_other_uses: True 
-  indoor:              ${set_indoor}
-  noise_level:         ${set_noise_level}         
-  spike_rejection:     ${set_spike_rejection}     
-  lightning_threshold: ${set_lightning_threshold} 
-  mask_disturber:      ${set_mask_disturber}   
-  div_ratio:           ${set_div_ratio}          
-  capacitance:         ${set_capacitor}         
-  watchdog_threshold:  ${set_watchdog_threshold}
-  calibration:         ${set_calibration}    
-  tune_antenna:        ${set_tune_antenna}    
-  
-#-------------------------------------------
-# TEXT SENSORS
-#-------------------------------------------
-text_sensor:
-  #-------------------------------------------
-  # Meteoalarm import home assistant sensor
-  #-------------------------------------------
-  - platform: homeassistant
-    internal: true
-    id: meteoalarm_event
-    entity_id: $meteoalarm_event
-    attribute: event
-    on_value:
-      then:
-        - text_sensor.template.publish:
-            id: meteoalarm
-            state: !lambda "return id(meteoalarm_event).state.c_str();"
-
-  - platform: template
-    id: meteoalarm
-    name: "${friendly_name} Meteoalarm"
-    lambda: |-
-      return {"Loading"};
-    update_interval: never
+external_components:
+  - source: 
+      type: local
+      path: /mnt/network_config/custom_component
+    components:
+      - as3935
+      - as3935_spi
 
 #-------------------------------------------
 # SENSORS
 #-------------------------------------------
 sensor:
   #-------------------------------------------
-  # Wake Up template 
+  # Wake UP Cause
   #-------------------------------------------
-  - platform: template
-    name: "${friendly_name} Wake Up Pin"
-    id: wakeup_temp
+  - platform:          template
+    name:             "MCU - Wakeup"
+    id:                wake_up_reason
     accuracy_decimals: 0
-    #internal: True
-    lambda: |-
-      return (id(wakeup_pin));
-    update_interval: never
-    
-  #-------------------------------------------
-  # Openweathermap import home assistant sensor
-  #-------------------------------------------
-  - platform: homeassistant
-    internal: true
-    id: weathermap_code
-    entity_id: $weathermap_code
+    lambda:            return esp_sleep_get_wakeup_cause();
+    entity_category:   diagnostic
+    update_interval:   never
     on_value:
-      then:
-        - sensor.template.publish:
-            id: weathercode
-            state: !lambda "return id(weathermap_code).state;"
+      # Start or restart frequency antenna showing
+      - if:
+          condition:
+            and:
+              - lambda: "return id(wake_up_reason).state == 0 || id(wake_up_reason).state == 3;"
+              - lambda: return id(event_type).state != 15;
+          then:
+            - wait_until:  
+                condition: api.connected
+                timeout: 30s
+            - lambda: |-
+                // Získaj hodnotu z number komponentu
+                uint8_t cap_value = static_cast<uint8_t>(id(tune_value).state);
+                
+                // Zapíš kapacitu na AS3935 (0x08 je register, 0x0F maska pre TUN_CAP)
+                id(as3935_id_test)->write_register(0x08, 0x0F, cap_value, 0);
+                
+                // Načítaj a loguj division ratio
+                uint8_t div_ratio = id(as3935_id_test)->read_div_ratio();
+                ESP_LOGI("as3935", "Division Ratio is set to: %d", div_ratio);
+                
+                // Načítaj a loguj internú kapacitu
+                uint8_t tune_val = id(as3935_id_test)->read_capacitance();
+                ESP_LOGI("as3935", "Internal Capacitor is set to: %d", tune_val);
+                
+                // Zobraz oscilátor
+                id(as3935_id_test)->display_oscillator(true, esphome::as3935::ANTFREQ);
+            - delay:            1s
+            - component.update: frequency
+            - delay:            1s
+            - component.update: frequency
+            - delay:            1s
+            - component.update: frequency
+            - delay:            1s
+            - component.update: frequency
+            - delay:            1s
+            - component.update: frequency
+            - lambda: id(as3935_id_test).display_oscillator(false, 3);
 
-  - platform: template
-    id: weathercode
-    name: "${friendly_name} WeatherCode"
-    update_interval: never
+#-------------------------------------------
+# ESP Reset reason
+# 1  - ESP_RST_POWERON   Zapnutie
+# 2  - ESP_RST_EXT       Externý reset
+# 3  - ESP_RST_SW        Softvérový reset (napr. OTA)
+# 4  - ESP_RST_PANIC     Kernel panic
+# 5  - ESP_RST_INT_WDT   Watchdog (Interrupt)
+# 6  - ESP_RST_TASK_WDT  Watchdog (Task)
+# 7  - ESP_RST_WDT       Watchdog
+# 8  - ESP_RST_DEEPSLEEP Zobudenie z deep sleep
+# 9  - ESP_RST_BROWNOUT  Brownout reset
+# 10 - ESP_RST_SDIO      SDIO reset
+#-------------------------------------------
+  - platform:          template
+    name:             "MCU - Reset"
+    id:                reset_reason
     accuracy_decimals: 0
-   
+    lambda:            return (int) esp_reset_reason();
+    update_interval:   never
+    entity_category:   diagnostic
+    
   #-------------------------------------------
   # Wifi signal component
   #------------------------------------------- 
-  - platform: wifi_signal
-    name: "${friendly_name} Signal"
-    id: wifisignal
+  - platform:        wifi_signal
+    name:           "MCU - Signal"
+    id:              wifisignal
     update_interval: never
 
   #-------------------------------------------
   # Raw Battery sensor
   #-------------------------------------------
-  - platform: adc
-    pin: "$battery_adc"
-    #name: "${friendly_name} Battery Raw"
+  - platform:        adc
+    pin:            "$battery_adc"
     update_interval: never
-    attenuation: 12db
-    id: batlevel
-    internal: True
-
+    attenuation:     12db
+    id:              batlevel
+    internal:        True
+    
   #-------------------------------------------
   # Battery sensor
   # ADC units whit units %
   #-------------------------------------------
-  - platform: template
-    name: "${friendly_name} Battery"
-    update_interval: never
-    id: bat_global
+  - platform:             template
+    name:                "MCU - Battery"
+    update_interval:      never
+    id:                   bat_global
     unit_of_measurement: "%"
-    lambda: "return id(battery_global);"
+    lambda:              "return id(battery_global);"
+    device_class:         battery
+    entity_category:      diagnostic
+    icon:                 mdi:battery
+    accuracy_decimals:    0
     filters:
       - calibrate_linear:
           - 1.9 -> 0    # 3.00V
-          - 2.43 -> 100 # 4.14V (full battery 4.19V)
+          - 2.3 -> 100 # 4.14V (full battery 4.19V)
       - lambda: 'return max((float)0.0, x);' # No value lower than 0
       - lambda: 'return min((float)100.0, x);' # No value greater than 100
       - filter_out: nan
-    device_class: battery
-    entity_category: diagnostic
-    icon: mdi:battery
-    accuracy_decimals: 0
 
-#-------------------------------------------
-# AMS AS3935 Franklin Lightning Sensor
-# SPI configuration whitout voltage regulator enabled
-#-------------------------------------------
-  - platform: as3935
+    
+  #-------------------------------------------
+  # AMS AS3935 Franklin Lightning Sensor
+  # SPI configuration whitout voltage regulator enabled
+  #-------------------------------------------
+  - platform:               as3935
     lightning_energy:
-      name: "${friendly_name} Lightning Energy Raw"
-      internal: true
+      name:                "Lightning - Energy"
       unit_of_measurement: "energy"
-      icon: mdi:lightning-bolt-outline
-      accuracy_decimals: 0
+      icon:                 mdi:lightning-bolt-outline
+      accuracy_decimals:    0
+      id:                   energy
+      filters:
+        lambda:             if (isnan(x)) {  return 0.0; } return x;
       on_value:
-        - component.update: energy_template
-        - component.update: distance_template2
+        - component.update: distance_template
         - if:
             condition:
               sensor.in_range:
@@ -477,58 +539,52 @@ sensor:
             then:
               - number.increment: light_counter
               - script.stop: deep_sleep_script
-      id: energy
+        - lambda: |-
+            unsigned long now = millis() / 1000;
+            if (id(last_lightning_time) > 0) {
+              id(lightning_interval) = now - id(last_lightning_time);
+            } else {
+              id(lightning_interval) = 0;
+            }
+            id(last_lightning_time) = now;
+        - component.update: lightning_interval_sensor
     distance:
-      name: "${friendly_name} Distance Storm Raw"
-      # internal: true
-      icon: mdi:access-point
-      #accuracy_decimals: 0
-      id: distance
-      #on_value:
-        #then:
-          #component.update: distance_template
+      name:                "Storm - Distance Raw"
+      icon:                 mdi:access-point
+      accuracy_decimals:    0
+      id:                   distance
+      filters:
+        lambda:             if (isnan(x)) {  return 0.0; } return x;
+    event:
+      internal:             true
+      id:                   event_type
+      on_value:
+        then:
+          if: 
+            condition:      
+                lambda: return id(event_type).state != 15;
+            then:
+              component.update: event_as3935
+
+      # 0 - Oscillator
+      # 1 - Noise
+      # 4 - Disturber
+      # 8 - Lightning
 
   #-------------------------------------------
-  # Template - Energy
-  # Templated filter out isnan value
-  #-------------------------------------------
-  - platform: template
-    name: "${friendly_name} Lightning Energy"
-    id: energy_template
-    lambda: return id(energy).state;
-    filters:
-      lambda: if (isnan(x)) {  return 0.0; } return x;
-    unit_of_measurement: "energy"
-    accuracy_decimals: 0
-    icon: mdi:lightning-bolt-outline
-    update_interval: never
-
-#-------------------------------------------
-# Template - Distance
-# Bug - always returns the same value (1 or 5km)
-# Templated filter out isnan value
-#-------------------------------------------
-#  - platform: template
-#    name: "${friendly_name} Distance Storm Raw"
-#    id: distance_template
-#    lambda: return id(distance).state;
-#    filters:
-#      lambda: if (isnan(x)) {  return 0.0; } return x;
-#    unit_of_measurement: "km"
-#    accuracy_decimals: 0
-#    icon: mdi:access-point
-#    update_interval: never
-
-  #-------------------------------------------
-  # Template - Distance 2
+  # Template - Distance
   # Distance calculator alternative
   # https://sites.google.com/view/as3935workbook/home
   # Templated filter out isnan value
   #-------------------------------------------   
-  - platform: template
-    name: "${friendly_name} Distance Storm"
-    id: distance_template2
-    lambda: return id(energy).state;
+  - platform:             template
+    name:                "Storm - Distance"
+    id:                   distance_template
+    lambda:               return id(energy).state;
+    unit_of_measurement: "km"
+    accuracy_decimals:    0
+    icon:                 mdi:access-point
+    update_interval:      never
     filters:
       - filter_out: 0.0 # energy isnan return 0 filter out this value otherwise send 40km
       - calibrate_linear:
@@ -537,50 +593,257 @@ sensor:
       - lambda: 'return max((float)0.0, x);' # No value lower than 1km
       - lambda: 'return min((float)40.0, x);' # No value greater than 40km
       - lambda: if (isnan(x)) {  return 0.0; } return x;
-
-    unit_of_measurement: "km"
-    accuracy_decimals: 0
-    icon: mdi:access-point
-    update_interval: never
-
+    
   #-------------------------------------------
   # Counter lightining
   #-------------------------------------------
   - platform: template
-    name: "${friendly_name} Lightning Counter"
+    name: "Lightning - Counter"
     id: light_counter_temp
-    lambda: |-
-      return (id(light_counter).state);
+    lambda: return (id(light_counter).state);
     unit_of_measurement: "pcs"
     accuracy_decimals: 0
     icon: mdi:lightning-bolt-circle
     update_interval: never
 
+  - platform: template
+    name: "Lightning - Interval"
+    id: lightning_interval_sensor
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    update_interval: never
+    lambda: |-
+      return id(lightning_interval);
+      
   #-------------------------------------------
   # TUNNING AN CALIBRATE ANTENNA
   # whit pulse counter 
   # after press button tune antanna show frequency kHz
   #-------------------------------------------
-  - platform: pulse_counter
-    pin: 
-      number: $ams_irq
-      allow_other_uses: True
-    name: "Calibrate - Frequency Antenna"
-    icon: mdi:video-input-antenna
-    internal_filter: 10us
-    update_interval: never
-    id: frequency
+  - platform:             pulse_counter
+    pin:                 
+      number:            $ams_irq
+      allow_other_uses:   True
+    name:                "Calibrate - Frequency Antenna"
+    icon:                 mdi:video-input-antenna
+    internal_filter:      10us
+    update_interval:      never
+    accuracy_decimals:    0
+    id:                   frequency
+    #lambda:              "return id(global_frequency);"
+    unit_of_measurement: "kHz"
+    entity_category:      diagnostic
     filters:
       - lambda: |-
           // Convert pulse count to frequency in Hz
-          return x / 1000.0 + 30; //35 is offset
-    unit_of_measurement: "kHz"
-    entity_category: diagnostic
+          return x / 59870 * 16; //div_ratio 16
+      - max: 
+          window_size:   3
+          send_every:    3
+          send_first_at: 3
+    on_value:
+      #- if: 
+      #    condition:
+      #      - binary_sensor.is_off: tunning_atenna_enable
+      #    then:
+      #      - lambda: id(as3935_id_test).display_oscillator(false, 3);
+      - globals.set: # after load raw bat value save global and publish template battery state
+          id: frequency_global
+          value: !lambda 'return id(frequency).state;'
+
+  #-------------------------------------------
+  # Openweathermap import home assistant sensor
+  #-------------------------------------------
+  - platform:   homeassistant
+    internal:   true
+    id:         weathercode
+    entity_id: $weathermap_code
+
+    
+#-------------------------------------------
+# TEXT SENSORS
+#-------------------------------------------
+text_sensor:
+  #-------------------------------------------
+  # AccuWeather import home assistant sensor
+  #-------------------------------------------
+  - platform:   homeassistant
+    internal:   true
+    id:         accuweather
+    entity_id: $accuweather_state
+    
+  #-------------------------------------------
+  # EVENT LOG LIGHTINING DETECTOR
+  #-------------------------------------------
+  - platform: template
+    id:       event_as3935
+    name:    "Storm - Event"
+    icon:     mdi:weather-partly-lightning
+    lambda: |-
+      if (id(event_type).state == 0)   return {"Oscillator"};
+      if (id(event_type).state == 1)   return {"Noise"     };
+      if (id(event_type).state == 4)   return {"Disturber" };
+      if (id(event_type).state == 8)   return {"Lightning" };
+      return {"None"};
 
 #-------------------------------------------
-# NUMBERS
+# BINARY SENSORS
 #-------------------------------------------
+binary_sensor:
+  #-------------------------------------------
+  # Deep Sleep binary template
+  #-------------------------------------------
+  - platform:        template
+    name:           "Deep Sleep - Prevent"
+    id:              deep_sleep_prevent
+    icon:            mdi:power-sleep
+    entity_category: diagnostic
+
+  #-------------------------------------------
+  # Calibrate tunning anetnna enable/disable
+  # measure interval frequency
+  #-------------------------------------------
+  - platform:        template
+    name:           "Calibrate - Tunning Enable"
+    id:              tunning_atenna_enable
+    icon:            mdi:video-input-antenna
+    entity_category: diagnostic
+
+  #-------------------------------------------
+  # Online status 
+  # Only API
+  #-------------------------------------------
+  - platform:        status
+    name:           "MCU - Status"
+    id:              status_online
+    entity_category: diagnostic
+    icon:            mdi:access-point-check
+    
+  #-------------------------------------------
+  # Alert lightining status
+  #-------------------------------------------
+  - platform: as3935
+    name:    "Storm - Alert Raw"
+    icon:     mdi:flash-alert-outline
+    id:       storm_alert
+    filters:
+      - delayed_off: 80s
+      
+  # Templated filter out isnan value
+  - platform: template
+    name:    "Storm - Alert"
+    lambda:   return id(storm_alert).state;
+    icon:     mdi:flash-alert-outline
+    filters:
+      lambda: if (isnan(x)) {  return false; } return x;
+    id:       storm_alert_template
+
+#-------------------------------------------
+# BUTTONS
+#-------------------------------------------   
+button:
+  #-------------------------------------------
+  # Deep Sleep Disable button
+  #-------------------------------------------
+  - platform:        template
+    name:           "DeepSleep - Disable"
+    icon:            mdi:power-sleep
+    id:              deepsleep_switch
+    entity_category: config
+    on_press:
+      then:
+        - script.stop: deep_sleep_script
+        - binary_sensor.template.publish:
+            id: deep_sleep_prevent
+            state: True
+        - logger.log: 
+            format: "PRESS BUTTON PREVENT DEEPSLEEP"
+            level: warn
+        - deep_sleep.prevent: deep_sleep_component
+        
+  #-------------------------------------------
+  # Deep Sleep Enable button
+  #-------------------------------------------
+  - platform: template
+    name: "DeepSleep - Enter"
+    icon: mdi:power-sleep
+    id: deepsleep_switch_enter
+    entity_category: config
+    on_press:
+      then:
+        - deep_sleep.enter: deep_sleep_component
+
+  #-------------------------------------------
+  # RESTART
+  # restart = reset prevent deepsleep
+  # reset after tunning antenna
+  #-------------------------------------------
+  - platform: restart
+    name: "MCU - Restart"
+
+#---------------------------------------------
+# TUNNING AN CALIBRATE ANTENNA
+#---------------------------------------------
+  #-------------------------------------------
+  # Display Oscillator disable
+  #-------------------------------------------
+  - platform: template
+    name: "Calibrate - Disable Oscillator"
+    on_press:
+      then:
+        - lambda: id(as3935_id_test).display_oscillator(false, 3);
+        
+
+  #-------------------------------------------
+  #- platform: template
+  #  name: "Write command"
+  #  on_press:
+  #    then:
+  #      - lambda: id(as3935_id_test).write_register(0x08, 0xF0, 0x08, 0);
+  #-------------------------------------------
+  
+  #-------------------------------------------
+  # Tunne antena enable pulse on irq pin
+  #-------------------------------------------
+  - platform: template
+    name: "Calibrate - Tune Antenna"
+    id: tune_antenna
+    on_press:
+      then:
+        - binary_sensor.template.publish:
+            id: tunning_atenna_enable
+            state: True
+        - lambda: |-
+            // change capacitor value
+            uint8_t cap_value = static_cast<uint8_t>(id(tune_value).state);
+            
+            // write capacite command AS3935 (0x08 je register, 0x0F maska pre TUN_CAP)
+            id(as3935_id_test)->write_register(0x08, 0x0F, cap_value, 0);
+            
+            // ready div ratio
+            uint8_t div_ratio = id(as3935_id_test)->read_div_ratio();
+            ESP_LOGI("as3935", "Division Ratio is set to: %d", div_ratio);
+            
+            // ready capacitance
+            uint8_t tune_val = id(as3935_id_test)->read_capacitance();
+            ESP_LOGI("as3935", "Internal Capacitor is set to: %d", tune_val);
+            
+            // Show display oscillator on irq pin
+            id(as3935_id_test)->display_oscillator(true, esphome::as3935::ANTFREQ);
+  
 number:
+  #-------------------------------------------
+  # Add paraller capacitor to antenna
+  # 1 step -> 8pF
+  #-------------------------------------------
+  - platform: template
+    name: "Write Capacitance number"
+    id: tune_value
+    min_value: 0
+    max_value: 14
+    step: 2
+    optimistic: true
+
   #-------------------------------------------
   # Number off lightining
   #-------------------------------------------
@@ -595,164 +858,7 @@ number:
     on_value:
       then:
           component.update: light_counter_temp
-
-#  - platform: template
-#    name: "${friendly_name} Capacitor"
-#    optimistic: true
-#    min_value: 0
-#    max_value: 15
-#    step: 1
-#    id: capacitor_set
-#    on_value:
-#      then:
-#        - lambda: id(as3935_id_test).write_capacitance(x);
-        #- lambda: id(as3935_id).read_capacitance();
-
-#  - platform: template
-#    name: "${friendly_name} Count freq"
-#    optimistic: true
-#    min_value: 0
-#    max_value: 1000000
-#    step: 1
-#    id: counter_freq
-
-#-------------------------------------------
-# BINARY SENSORS
-#-------------------------------------------
-binary_sensor:
-  #- platform: gpio
-    #id: pulse_counter_irq
-    #pin: 
-    #  number: $ams_irq
-    #  allow_other_uses: True
-    #name: "Pulse Counter"
-    #internal_filter: 0us
-    #update_interval: never
-    #on_state:
-    #  then:
-    #    - number.increment: counter_freq
-
-  #-------------------------------------------
-  # Online status 
-  # Only API
-  #-------------------------------------------
-  - platform: status
-    name: "${friendly_name} Status"
-    id: status_online
-    entity_category: diagnostic
-    icon: mdi:access-point-check
-    
-  #-------------------------------------------
-  # Alert lightining status
-  #-------------------------------------------
-  - platform: as3935
-    name: "${friendly_name} Storm Alert Raw"
-    icon: mdi:flash-alert-outline
-    id: storm_alert
-    filters:
-      - delayed_off: 80s
-      #- filter_out: nan
-    internal: true
-      
-  # Templated filter out isnan value
-  - platform: template
-    name: "${friendly_name} Storm Alert"
-    lambda: return id(storm_alert).state;
-    filters:
-      lambda: if (isnan(x)) {  return false; } return x;
-    id: storm_alert_template
-            
-  #-------------------------------------------
-  # Deep Sleep binary template
-  #-------------------------------------------
-  - platform: template
-    name: "${friendly_name} Deep Sleep - Prevent"
-    id: deep_sleep_prevent
-    icon: mdi:power-sleep
-    entity_category: diagnostic
-
-  #-------------------------------------------
-  # Calibrate tunning anetnna enable/disable
-  # measure interval frequency
-  #-------------------------------------------
-  - platform: template
-    name: "${friendly_name} Calibrate - Tunning Enable"
-    id: tunning_atenna_enable
-    icon: mdi:video-input-antenna
-    entity_category: diagnostic
-
-#-------------------------------------------
-# BUTTONS
-#-------------------------------------------
-button:
-  #-------------------------------------------
-  # Deep Sleep Enable button
-  #-------------------------------------------
-  - platform: template
-    name: "${friendly_name} DeepSleep - Disable"
-    icon: mdi:power-sleep
-    id: deepsleep_switch
-    entity_category: config
-    on_press:
-      then:
-        - script.stop: deep_sleep_script
-        - binary_sensor.template.publish:
-            id: deep_sleep_prevent
-            state: True
-        - logger.log: 
-            format: "PRESS BUTTON PREVENT DEEPSLEEP"
-            level: warn
-        - deep_sleep.prevent: deep_sleep_component
-
-  #-------------------------------------------
-  # RESTART
-  # restart = reset prevent deepsleep
-  # reset after tunning antenna
-  #-------------------------------------------
-  - platform: restart
-    name: "${friendly_name} Restart"
-
-  #-------------------------------------------
-  # TUNNING AN CALIBRATE ANTENNA
-  # test version
-  # - Tune antenna enable:
-  #     lambda: id(as3935_id).tune_antenna(); -> enable tunning antenna (disable after restart mcu)
-  # - Set value capacitance:
-  #      lambda: id(as3935_id).set_capacitance(10);
-  #      lambda: id(as3935_id).write_capacitance(10);
-  #      lambda: id(as3935_id).read_capacitance();
-  # Not send value?
-  #-------------------------------------------
-  - platform: template
-    name: "Calibrate - Tune Antenna"
-    id: tune_antenna
-    icon: mdi:video-input-antenna
-    on_press:
-      then:
-        - lambda: id(as3935_id_test).tune_antenna();
-        - binary_sensor.template.publish:
-            id: tunning_atenna_enable
-            state: True
-    entity_category: config
-  
-  - platform: template
-    name: "Calibrate - Capacitance"
-    on_press:
-      then:
-        - lambda: id(as3935_id_test).set_capacitance(10);
-        - delay: 1s
-        - lambda: id(as3935_id_test).write_capacitance(10);
-        - delay: 1s
-        - lambda: id(as3935_id_test).read_capacitance();
-    entity_category: config
-
-  - platform: template
-    name: "Calibrate - Oscillator"
-    on_press:
-      then:
-        - lambda: id(as3935_id_test).calibrate_oscillator();
-    entity_category: config
-
+          
 #-------------------------------------------
 # SWITCHES
 #-------------------------------------------
@@ -761,12 +867,13 @@ switch:
   # Switch - Adc battery status reading
   # Wiring whit 2n3904 and 2n3906
   #-------------------------------------------
-  - platform: gpio
-    name: "${friendly_name} Battery - Measure"
-    restore_mode: ALWAYS_OFF
+  - platform:        gpio
+    name:           "Battery - Measure"
+    restore_mode:    ALWAYS_OFF
+    id:              switch_adc
+    entity_category: config
     pin:
       number: "$battery_adc_switch"
-    id: switch_adc
     on_turn_on:
       - then:
           - delay: 150ms
@@ -785,11 +892,9 @@ interval:
   # measurement cycling battery
   - interval: 2min
     then:
-      if:
-        condition:
-          binary_sensor.is_on: deep_sleep_prevent
-        then:
-          switch.turn_on: switch_adc
+      - switch.turn_on:   switch_adc
+      - component.update: wifisignal
+          
   # controlling weather forecast
   - interval: 30s
     then:
@@ -801,6 +906,9 @@ interval:
                 id: weathercode
                 above: 199
                 below: 240
+            - text_sensor.state: 
+                id: accuweather
+                state: lightning
             - binary_sensor.is_on: storm_alert_template
             - binary_sensor.is_on: deep_sleep_prevent
         then:
@@ -814,13 +922,14 @@ interval:
           if:
             condition:
               and:
-              - sensor.in_range: # all others codes openweathermap
-                  id: weathercode
-                  above: 240
+              #- sensor.in_range: # all others codes openweathermap
+              #    id: weathercode
+              #    above: 240
               - binary_sensor.is_off: storm_alert_template # this sensor is false
               - binary_sensor.is_off: deep_sleep_prevent # blocking deep sleep button is false
             then:
               - script.execute: deep_sleep_script
+              
   # after tunning atenna enable frequency showing
   - interval: 1s
     then:
