@@ -3,6 +3,7 @@ Home Assistant and ESPHOME
 ![Main photo of the weather station](title.jpg)
 
 **CHANGELOG:**
+2025-06-11
 - replace esp32-s to esp32-c3
 - replace new sensor as3935
 - fixed setup capacitance code
