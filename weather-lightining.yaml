@@ -419,8 +419,9 @@ sensor:
       - if:
           condition:
             and:
-              - lambda: "return id(wake_up_reason).state == 0 || id(wake_up_reason).state == 3;"
-              - lambda: return id(event_type).state != 15;
+              - lambda: "return id(wake_up_reason).state == 0 || id(wake_up_reason).state == 3;" # Wake up reset/start/ota or GPIO
+              - lambda: return id(event_type).state != 15;                                       # no send event type none
+              - lambda: return id(reset_reason).state != 8;                                      # no start wakeup timer
           then:
             - wait_until:  
                 condition: api.connected
@@ -530,6 +531,11 @@ sensor:
       filters:
         lambda:             if (isnan(x)) {  return 0.0; } return x;
       on_value:
+        - if:
+            condition:
+              - lambda: return id(energy).state == 0;
+            then:
+              - lambda: id(distance_template).publish_state(0.0);
         - component.update: distance_template
         - if:
             condition:
@@ -539,15 +545,15 @@ sensor:
             then:
               - number.increment: light_counter
               - script.stop: deep_sleep_script
-        - lambda: |-
-            unsigned long now = millis() / 1000;
-            if (id(last_lightning_time) > 0) {
-              id(lightning_interval) = now - id(last_lightning_time);
-            } else {
-              id(lightning_interval) = 0;
-            }
-            id(last_lightning_time) = now;
-        - component.update: lightning_interval_sensor
+              - lambda: |-
+                  unsigned long now = millis() / 1000;
+                  if (id(last_lightning_time) > 0) {
+                    id(lightning_interval) = now - id(last_lightning_time);
+                  } else {
+                    id(lightning_interval) = 0;
+                  }
+                  id(last_lightning_time) = now;
+              - component.update: lightning_interval_sensor
     distance:
       name:                "Storm - Distance Raw"
       icon:                 mdi:access-point
@@ -580,18 +586,19 @@ sensor:
   - platform:             template
     name:                "Storm - Distance"
     id:                   distance_template
-    lambda:               return id(energy).state;
+    lambda:               if (isnan(id(energy).state)) { return 0.0; } else if (id(energy).state == 0) { return 0.0; } else { return id(energy).state; }
     unit_of_measurement: "km"
     accuracy_decimals:    0
     icon:                 mdi:access-point
     update_interval:      never
     filters:
-      - filter_out: 0.0 # energy isnan return 0 filter out this value otherwise send 40km
+      #- filter_out: 0.0 # energy isnan return 0 filter out this value otherwise send 40km
       - calibrate_linear:
           - 230000 -> 1 
           - 1300 -> 40   
       - lambda: 'return max((float)0.0, x);' # No value lower than 1km
-      - lambda: 'return min((float)40.0, x);' # No value greater than 40km
+      #- lambda: 'return min((float)40.0, x);' # No value greater than 40km
+      - lambda: 'return (x > 40.0) ? 0.0 : max(0.0f, x);'
       - lambda: if (isnan(x)) {  return 0.0; } return x;
     
   #-------------------------------------------
